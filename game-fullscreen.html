@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPG Cave Exploration: Fullscreen Mode</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #090d16; color: #f8fafc;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  canvas {
+    display: block;
+    width: 100%; height: 100%;
+    cursor: crosshair;
+  }
+  /* Абсолютно спозиционированный UI поверх полноэкранного Canvas */
+  .hud {
+    position: absolute;
+    top: 20px; left: 20px; right: 20px;
+    display: flex; justify-content: space-between;
+    pointer-events: none; /* Пропускаем клики сквозь контейнер к Canvas */
+    z-index: 10;
+  }
+  .gold-count {
+    background: rgba(30, 41, 59, 0.85);
+    padding: 10px 24px;
+    border-radius: 9999px;
+    border: 1px solid #475569;
+    font-size: 24px; font-weight: 800;
+    color: #fbbf24;
+    text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+    pointer-events: auto;
+  }
+  .tech-info {
+    background: rgba(30, 41, 59, 0.85);
+    padding: 10px 20px;
+    border-radius: 9999px;
+    border: 1px solid #475569;
+    font-size: 14px; color: #94a3b8;
+    pointer-events: auto;
+  }
+  .instruction {
+    position: absolute;
+    bottom: 25px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 41, 59, 0.85);
+    padding: 12px 28px;
+    border-radius: 9999px;
+    border: 1px solid #475569;
+    color: #e2e8f0; font-size: 14px;
+    text-align: center;
+    z-index: 10;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  }
+</style>
+</head>
+<body>
+
+<div class="hud">
+  <div class="gold-count">💰 <span id="goldVal">0</span></div>
+  <div class="tech-info">8-Way Pathfinding • Fullscreen Mode</div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div class="instruction">Кликни в любую точку. Камера движется, только если карта больше твоего экрана!</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const goldVal = document.getElementById('goldVal');
+
+const TILE_SIZE = 48;
+
+// Карта пещеры 25x20
+const GRID = [
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,0,1,1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,0,0,0,1,0,1],
+  [1,0,0,0,0,0,0,1,0,1,1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
+  [1,1,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,1,0,1,0,1,0,1],
+  [1,1,1,0,1,0,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,1,1],
+  [1,0,0,1,1,0,1,1,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1],
+  [1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1],
+  [1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,1],
+  [1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1],
+  [1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+  [1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1],
+  [1,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,0,1,0,1,0,1],
+  [1,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,0,1],
+  [1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+const COLS = GRID[0].length;
+const ROWS = GRID.length;
+const MAP_WIDTH_PX = COLS * TILE_SIZE;  // 1200px
+const MAP_HEIGHT_PX = ROWS * TILE_SIZE; // 960px
+
+const player = {
+  x: 1, y: 1,
+  realX: 48, realY: 48,
+  path: [],
+  speed: 0.12,
+  gold: 0
+};
+
+const camera = { x: 0, y: 0 };
+
+let items = [
+  { id: 1, x: 3, y: 3, amount: 100 },
+  { id: 2, x: 1, y: 17, amount: 150 },
+  { id: 3, x: 13, y: 5, amount: 250 },
+  { id: 4, x: 7, y: 13, amount: 75 },
+  { id: 5, x: 23, y: 17, amount: 500 },
+  { id: 6, x: 13, y: 11, amount: 300 },
+];
+
+// Функция ресайза Canvas под полный экран
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas(); // Инициализация при старте
+
+
+// =========================================================================
+//                  КАК ПОДКЛЮЧИТЬ СВОИ ТЕКСТУРЫ (КАРТИНКИ)
+// =========================================================================
+// Чтобы заменить процедурную графику на реальные файлы картинок:
+//
+// 1. Создайте объекты Image в JS:
+//    const grassImage = new Image();
+//    grassImage.src = 'img/grass.png'; // Путь к вашей картинке травы
+//
+//    const stoneImage = new Image();
+//    stoneImage.src = 'img/stone.png'; // Путь к вашей картинке стены
+//
+//    const coinImage = new Image();
+//    coinImage.src = 'img/gold_coin.png'; // Путь к монетке
+//
+// 2. В методе render() замените вызовы ctx.drawImage(textures, ...) следующим образом:
+//    - Для травы (GRID[y][x] === 0):
+//      ctx.drawImage(grassImage, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+//    - Для стен (GRID[y][x] === 1):
+//      ctx.drawImage(stoneImage, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+//    - Для золота:
+//      ctx.drawImage(coinImage, it.x * TILE_SIZE, iy, TILE_SIZE, TILE_SIZE);
+// =========================================================================
+
+
+// --- A* ДИАГОНАЛЬНЫЙ ПОИСК ПУТИ (8-направленный) ---
+function findPath(start, end) {
+  const openSet = [start];
+  const cameFrom = new Map();
+  const gScore = new Map();
+  const fScore = new Map();
+
+  const key = (p) => `${p.x},${p.y}`;
+  const h = (p) => {
+    const dx = Math.abs(p.x - end.x);
+    const dy = Math.abs(p.y - end.y);
+    return (dx + dy) + (Math.sqrt(2) - 2) * Math.min(dx, dy);
+  };
+
+  gScore.set(key(start), 0);
+  fScore.set(key(start), h(start));
+
+  while (openSet.length > 0) {
+    openSet.sort((a, b) => fScore.get(key(a)) - fScore.get(key(b)));
+    const current = openSet.shift();
+
+    if (current.x === end.x && current.y === end.y) {
+      const path = [current];
+      let currKey = key(current);
+      while (cameFrom.has(currKey)) {
+        const p = cameFrom.get(currKey);
+        path.unshift(p);
+        currKey = key(p);
+      }
+      return path;
+    }
+
+    const neighbors = [
+      {x: current.x+1, y: current.y, cost: 1},
+      {x: current.x-1, y: current.y, cost: 1},
+      {x: current.x, y: current.y+1, cost: 1},
+      {x: current.x, y: current.y-1, cost: 1},
+      {x: current.x+1, y: current.y+1, cost: Math.sqrt(2)},
+      {x: current.x-1, y: current.y-1, cost: Math.sqrt(2)},
+      {x: current.x+1, y: current.y-1, cost: Math.sqrt(2)},
+      {x: current.x-1, y: current.y+1, cost: Math.sqrt(2)}
+    ];
+
+    for (let nb of neighbors) {
+      if (nb.x < 0 || nb.x >= COLS || nb.y < 0 || nb.y >= ROWS) continue;
+      if (GRID[nb.y][nb.x] === 1) continue;
+
+      if (nb.cost > 1) {
+        if (GRID[current.y][nb.x] === 1 || GRID[nb.y][current.x] === 1) continue;
+      }
+
+      const tentG = gScore.get(key(current)) + nb.cost;
+      if (!gScore.has(key(nb)) || tentG < gScore.get(key(nb))) {
+        cameFrom.set(key(nb), current);
+        gScore.set(key(nb), tentG);
+        fScore.set(key(nb), tentG + h(nb));
+        if (!openSet.some(p => p.x === nb.x && p.y === nb.y)) openSet.push(nb);
+      }
+    }
+  }
+  return [];
+}
+
+// --- СОЗДАНИЕ ВРЕМЕННЫХ ПРОЦЕДУРНЫХ ТЕКСТУР ---
+const textures = document.createElement('canvas');
+textures.width = TILE_SIZE * 3; textures.height = TILE_SIZE;
+const tCtx = textures.getContext('2d');
+// Трава (Тайлер 0)
+tCtx.fillStyle = '#0f172a'; tCtx.fillRect(0,0,TILE_SIZE,TILE_SIZE);
+tCtx.fillStyle = '#1e293b'; for(let i=0; i<12; i++) tCtx.fillRect((i*17)%40, (i*9)%40, 3, 3);
+// Стены пещеры (Тайлер 1)
+tCtx.fillStyle = '#312e81'; tCtx.fillRect(TILE_SIZE,0,TILE_SIZE,TILE_SIZE);
+tCtx.strokeStyle = '#4338ca'; tCtx.lineWidth = 4; tCtx.strokeRect(TILE_SIZE+4, 4, TILE_SIZE-8, TILE_SIZE-8);
+// Монетка (Тайлер 2)
+tCtx.fillStyle = '#0f172a'; tCtx.fillRect(TILE_SIZE*2,0,TILE_SIZE,TILE_SIZE);
+tCtx.beginPath(); tCtx.arc(TILE_SIZE*2.5, TILE_SIZE/2, 14, 0, 7); tCtx.fillStyle='#fbbf24'; tCtx.fill();
+
+// --- УПРАВЛЕНИЕ МЫШЬЮ ---
+canvas.onmousedown = (e) => {
+  const rect = canvas.getBoundingClientRect();
+  
+  // Рассчитываем координаты клика с учетом текущего положения камеры
+  const mouseX = e.clientX - rect.left + camera.x;
+  const mouseY = e.clientY - rect.top + camera.y;
+  
+  const tx = Math.floor(mouseX / TILE_SIZE);
+  const ty = Math.floor(mouseY / TILE_SIZE);
+
+  if (GRID[ty] && GRID[ty][tx] === 0) {
+    const p = findPath({x: Math.round(player.x), y: Math.round(player.y)}, {x: tx, y: ty});
+    if (p.length > 0) player.path = p;
+  }
+};
+
+function update() {
+  // Логика перемещения по вектору пути
+  if (player.path.length > 0) {
+    const target = player.path[0];
+    const dx = target.x - player.x, dy = target.y - player.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 0.1) {
+      player.x = target.x; player.y = target.y;
+      player.path.shift();
+    } else {
+      player.x += (dx / dist) * player.speed;
+      player.y += (dy / dist) * player.speed;
+    }
+  }
+
+  // Логика подбора золота
+  items = items.filter(it => {
+    if (Math.hypot(player.x - it.x, player.y - it.y) < 0.5) {
+      player.gold += it.amount; goldVal.innerText = player.gold;
+      return false;
+    } return true;
+  });
+
+  player.realX += (player.x * TILE_SIZE - player.realX) * 0.3;
+  player.realY += (player.y * TILE_SIZE - player.realY) * 0.3;
+
+  // =========================================================================
+  //      УМНОЕ СЛЕЖЕНИЕ КАМЕРЫ (С ДИНАМИЧЕСКИМ ЦЕНТРИРОВАНИЕМ КАРТЫ)
+  // =========================================================================
+  
+  // 1. По оси X
+  if (MAP_WIDTH_PX > canvas.width) {
+    // Если карта шире экрана, камера плавно плавает за игроком
+    camera.x += (player.realX - canvas.width / 2 + TILE_SIZE / 2 - camera.x) * 0.1;
+    // Ограничиваем камеру, чтобы она не улетала за рамки большой карты
+    camera.x = Math.max(0, Math.min(camera.x, MAP_WIDTH_PX - canvas.width));
+  } else {
+    // Если экран шире карты, фиксируем карту ровно по центру экрана
+    camera.x = -(canvas.width - MAP_WIDTH_PX) / 2;
+  }
+
+  // 2. По оси Y
+  if (MAP_HEIGHT_PX > canvas.height) {
+    // Если карта выше экрана, камера плавно следует за игроком
+    camera.y += (player.realY - canvas.height / 2 + TILE_SIZE / 2 - camera.y) * 0.1;
+    // Ограничиваем камеру по вертикали
+    camera.y = Math.max(0, Math.min(camera.y, MAP_HEIGHT_PX - canvas.height));
+  } else {
+    // Если экран выше карты, фиксируем карту ровно по центру экрана
+    camera.y = -(canvas.height - MAP_HEIGHT_PX) / 2;
+  }
+}
+
+function render() {
+  update(); 
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  // Сдвигаем матрицу рисования в координаты камеры
+  ctx.translate(-Math.floor(camera.x), -Math.floor(camera.y));
+
+  // --- 1. ОТРИСОВКА КАРТЫ ПЕЩЕРЫ ---
+  for(let y=0; y<ROWS; y++) {
+    for(let x=0; x<COLS; x++) {
+      const tileType = GRID[y][x]; // 0 или 1
+      
+      // ИСПОЛЬЗОВАНИЕ ТЕКСТУР ИЗ СПРАЙТ-ЛИСТА (Или переопредели на свои, см. комментарий выше)
+      ctx.drawImage(
+        textures, 
+        tileType * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE, 
+        x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE
+      );
+    }
+  }
+  
+  // --- 2. ЛИНИЯ ПУТИ (Пунктир) ---
+  if (player.path.length > 0) {
+    ctx.beginPath(); ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.moveTo(player.realX + 24, player.realY + 24);
+    player.path.forEach(p => ctx.lineTo(p.x * TILE_SIZE + 24, p.y * TILE_SIZE + 24));
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // --- 3. ЗОЛОТО С ЦИФРАМИ ---
+  const float = Math.sin(Date.now()/250) * 5;
+  items.forEach(it => {
+    const ix = it.x * TILE_SIZE;
+    const iy = it.y * TILE_SIZE + float;
+    
+    // Иконка монетки (Тайлер 2)
+    ctx.drawImage(textures, TILE_SIZE * 2, 0, TILE_SIZE, TILE_SIZE, ix, iy, TILE_SIZE, TILE_SIZE);
+    
+    // Текст над монеткой с номиналом золота
+    ctx.fillStyle = "#fff"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(`${it.amount}g`, ix + 24, iy - 6);
+  });
+
+  // --- 4. ИГРОК ---
+  ctx.fillStyle = "#6366f1"; ctx.beginPath();
+  ctx.arc(player.realX + 24, player.realY + 24, 16, 0, Math.PI*2);
+  ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.restore(); // Сбрасываем сдвиг камеры, чтобы UI не уплывал
+
+  requestAnimationFrame(render);
+}
+
+render();
+</script>
+</body>
+</html>
