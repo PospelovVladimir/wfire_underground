@@ -3,43 +3,43 @@ import React, { useEffect, useRef, useState } from "react";
 import { checkPickups, updatePlayerPhysics } from "../../engine/physics";
 import { type Item, type PlayerState, type Point } from "../../types";
 import { GameScene } from "../gameScene/GameScene";
+import { TILE_SIZE } from "../../constants";
+import { LEVEL_1 } from "../../levels/level1";
 
 export const GameCanvas: React.FC = () => {
+  const currentLevel = LEVEL_1; // Текущий уровень
+
   const [gold, setGold] = useState(0);
 
-  const [items, setItems] = useState<Item[]>([
-    { id: 1, x: 23, y: 1, amount: 100 },
-    { id: 2, x: 1, y: 17, amount: 150 },
-    { id: 3, x: 13, y: 5, amount: 250 },
-    { id: 4, x: 7, y: 13, amount: 75 },
-    { id: 5, x: 23, y: 17, amount: 500 },
-  ]);
+  // 1. Предметы инициализируются ИЗ УРОВНЯ
+  const [items, setItems] = useState<Item[]>(currentLevel.items);
 
+  // 2. Игрок и внутренний стейт инициализируются ИЗ УРОВНЯ
   const gameRef = useRef({
     player: {
-      x: 1,
-      y: 1,
-      realX: 48,
-      realY: 48,
+      x: currentLevel.playerStart.x,
+      y: currentLevel.playerStart.z,
+      realX: currentLevel.playerStart.x * TILE_SIZE,
+      realY: currentLevel.playerStart.z * TILE_SIZE,
       path: [] as Point[],
       gold: 0,
     } as PlayerState,
-    items: [] as Item[],
+    // Копия списка предметов для непрерывного 60fps-расчета коллизий:
+    items: currentLevel.items as Item[],
     camera: { x: 0, y: 0 },
     textures: null,
   });
 
-  useEffect(() => {
-    gameRef.current.items = items;
-  }, []);
-
+  // Игровой цикл
   useEffect(() => {
     let frameId: number;
     const loop = () => {
       const state = gameRef.current;
 
+      // Движение
       updatePlayerPhysics(state.player);
 
+      // Проверка сбора предметов
       const remainingItems = checkPickups(
         state.player,
         state.items,
@@ -48,9 +48,10 @@ export const GameCanvas: React.FC = () => {
         }
       );
 
+      // Синхронизация: если подобрали предмет, обновляем и React, и Ref
       if (remainingItems.length !== state.items.length) {
-        state.items = remainingItems;
-        setItems(remainingItems);
+        state.items = remainingItems; // для физики
+        setItems(remainingItems); // для 3D-рендера сцены
       }
 
       frameId = requestAnimationFrame(loop);
@@ -58,7 +59,7 @@ export const GameCanvas: React.FC = () => {
 
     frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, []); // <-- ПУСТОЙ МАССИВ ЗАВИСИМОСТЕЙ! Цикл работает стабильно и непрерывно
+  }, []);
 
   return (
     <div
@@ -70,7 +71,8 @@ export const GameCanvas: React.FC = () => {
       }}
     >
       <Canvas shadows>
-        <GameScene gameRef={gameRef} items={items} />
+        {/* Передаем данные уровня и реактивные предметы в сцену */}
+        <GameScene gameRef={gameRef} level={currentLevel} items={items} />
       </Canvas>
 
       <div

@@ -1,10 +1,16 @@
-import { useTexture } from "@react-three/drei";
+import { useGLTF, useTexture } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import React, { Suspense, useLayoutEffect, useRef } from "react";
+import React, { Suspense, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { COLS, GRID, ROWS, TILE_SIZE } from "../../constants";
+import { TILE_SIZE } from "../../constants";
 import { findPath } from "../../engine/pathfinder";
-import { type Item, type PlayerState, type Point } from "../../types";
+import { WALL_TYPES } from "../../tiles";
+import {
+  type Item,
+  type LevelData,
+  type PlayerState,
+  type Point,
+} from "../../types";
 
 interface GameSceneProps {
   gameRef: React.MutableRefObject<{
@@ -18,33 +24,157 @@ interface GameSceneProps {
 // -------------------------------------------------------------
 // 1. СТЕНЫ ПЕЩЕРЫ (С загрузкой каменных текстур)
 // -------------------------------------------------------------
-const Wall: React.FC<{ x: number; z: number }> = ({ x, z }) => {
-  // Загружаем текстурные карты камня.
-  // Положи эти файлы картинок в папку public/textures/
-  const stoneTextures = useTexture({
-    map: "/textures/stone_color.png", // Основной цвет камня
-    normalMap: "/textures/stone_normal.png", // Карта рельефа (создает объемные трещины)
-    roughnessMap: "/textures/stone_rough.png", // Карта матовости/блеска
-  });
+// const Wall: React.FC<{ x: number; z: number }> = ({ x, z }) => {
+//   // Загружаем текстурные карты камня.
+//   // Положи эти файлы картинок в папку public/textures/
+//   const stoneTextures = useTexture({
+//     map: "/textures/stone_color.png", // Основной цвет камня
+//     normalMap: "/textures/stone_normal.png", // Карта рельефа (создает объемные трещины)
+//     roughnessMap: "/textures/stone_rough.png", // Карта матовости/блеска
+//   });
 
-  // Настройки повторения текстуры на блоке
-  Object.values(stoneTextures).forEach((texture) => {
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-  });
+//   // Настройки повторения текстуры на блоке
+//   Object.values(stoneTextures).forEach((texture) => {
+//     texture.wrapS = THREE.RepeatWrapping;
+//     texture.wrapT = THREE.RepeatWrapping;
+//   });
+
+//   return (
+//     <mesh position={[x + 0.5, 0.75, z + 0.5]} castShadow receiveShadow>
+//       <boxGeometry args={[1, 1.5, 1]} />
+//       {/* Применяем текстурный пак камня к материалу стены */}
+//       <meshStandardMaterial
+//         {...stoneTextures}
+//         roughness={0.8}
+//         metalness={0.1}
+//       />
+//     </mesh>
+//   );
+// };
+
+// interface RockWallProps {
+//   x: number;
+//   z: number;
+// }
+
+// Псевдослучайное число на основе координат (детерминированное, не скачет при ререндере)
+// const getSeed = (x: number, z: number, offset: number) => {
+//   const val = Math.sin(x * 12.9898 + z * 78.233 + offset * 43758.5453);
+//   return val - Math.floor(val);
+// };
+
+// export const RockWall: React.FC<RockWallProps> = ({ x, z }) => {
+//   // 1. Загружаем 3D-модель из папки public/models/
+//   // useGLTF кэширует файл: сколько бы стен ни было на карте, файл скачивается ровно 1 раз!
+//   const { scene } = useGLTF("/models/rock_wall2.glb");
+
+//   // 2. Делаем глубокую копию сцены для этой конкретной клетки и задаем случайный поворот/масштаб
+//   const { clonedScene, rotationY, scaleFactor, offsetY } = useMemo(() => {
+//     const clone = scene.clone(true);
+
+//     // Включаем тени для всех мешей внутри модели
+//     clone.traverse((child) => {
+//       if ((child as THREE.Mesh).isMesh) {
+//         child.castShadow = true;
+//         child.receiveShadow = true;
+//       }
+//     });
+
+//     const s1 = getSeed(x, z, 1);
+//     const s2 = getSeed(x, z, 2);
+
+//     // Поворот на 0, 90, 180 или 270 градусов, чтобы скрыть повторяемость
+//     const angles = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
+//     const rot = angles[Math.floor(s1 * angles.length)];
+
+//     // Небольшой разброс по масштабу и высоте для органичности скалы
+//     const scale = 0.95 + s2 * 0.25; // от 0.95 до 1.2
+//     const yShift = (s1 - 0.5) * 0.1;
+
+//     return {
+//       clonedScene: clone,
+//       rotationY: rot,
+//       scaleFactor: scale,
+//       offsetY: yShift,
+//     };
+//   }, [scene, x, z]);
+
+//   return (
+//     <group position={[x + 0.5, offsetY, z + 0.5]}>
+//       <primitive
+//         object={clonedScene}
+//         rotation={[0, rotationY, 0]}
+//         scale={[scaleFactor, scaleFactor * 1.5, scaleFactor]} // вытягиваем чуть вверх
+//       />
+//     </group>
+//   );
+// };
+
+interface RockWallProps {
+  x: number;
+  z: number;
+  tileId: number;
+}
+
+// Псевдослучайный генератор, чтобы случайные повороты не менялись при ререндерах
+const getSeed = (x: number, z: number, offset: number) => {
+  const val = Math.sin(x * 12.9898 + z * 78.233 + offset * 43758.5453);
+  return val - Math.floor(val);
+};
+
+export const RockWall: React.FC<RockWallProps> = ({ x, z, tileId }) => {
+  const config = WALL_TYPES[tileId] || WALL_TYPES[1];
+
+  // Загружаем нужную модельку по пути из конфига
+  const { scene } = useGLTF(config.modelPath);
+
+  const { clonedScene, rotationY, scaleX, scaleY, scaleZ } = useMemo(() => {
+    const clone = scene.clone(true);
+
+    // Включаем тени для всех мешей модели
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    const s1 = getSeed(x, z, 1);
+    const s2 = getSeed(x, z, 2);
+
+    // 4 случайных поворота (0, 90, 180, 270 град)
+    const angles = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
+    const rot = angles[Math.floor(s1 * angles.length)];
+
+    // Небольшой разброс размера для природной неоднородности
+    const randomVariation = 0.95 + s2 * 0.15; // 0.95 - 1.10
+    const finalScale = config.baseScale * randomVariation;
+    const height = finalScale * (config.heightMultiplier || 1.4);
+
+    return {
+      clonedScene: clone,
+      rotationY: rot,
+      scaleX: finalScale,
+      scaleY: height,
+      scaleZ: finalScale,
+    };
+  }, [scene, x, z, config]);
 
   return (
-    <mesh position={[x + 0.5, 0.75, z + 0.5]} castShadow receiveShadow>
-      <boxGeometry args={[1, 1.5, 1]} />
-      {/* Применяем текстурный пак камня к материалу стены */}
-      <meshStandardMaterial
-        {...stoneTextures}
-        roughness={0.8}
-        metalness={0.1}
+    <group position={[x + 0.5, 0, z + 0.5]}>
+      <primitive
+        object={clonedScene}
+        rotation={[0, rotationY, 0]}
+        scale={[scaleX, scaleY, scaleZ]}
       />
-    </mesh>
+    </group>
   );
 };
+
+// Предзагрузка всех моделей разом при старте игры
+Object.values(WALL_TYPES).forEach((cfg) => {
+  useGLTF.preload(cfg.modelPath);
+});
 
 const Lamp: React.FC<{ x: number; z: number }> = ({ x, z }) => {
   // Загружаем текстурные карты камня.
@@ -157,33 +287,106 @@ const Player3D: React.FC<{ gameRef: any }> = ({ gameRef }) => {
 // -------------------------------------------------------------
 // 4. ПОЛ (Клики мыши)
 // -------------------------------------------------------------
-const Floor: React.FC<{ gameRef: any }> = ({ gameRef }) => {
-  // 1. Загружаем карты текстур пола из public/textures/
+// const Floor: React.FC<{ gameRef: any }> = ({ gameRef }) => {
+//   // 1. Загружаем карты текстур пола из public/textures/
+//   const floorTextures = useTexture({
+//     map: "/textures/floor_color.png",
+//     normalMap: "/textures/floor_normal.png",
+//     roughnessMap: "/textures/floor_rough.png",
+//   });
+
+//   // 2. Настраиваем тайлинг: повторяем текстуру ровно по числу плиток (COLS x ROWS)
+//   useLayoutEffect(() => {
+//     Object.values(floorTextures).forEach((texture) => {
+//       texture.wrapS = THREE.RepeatWrapping;
+//       texture.wrapT = THREE.RepeatWrapping;
+//       // 1 повтор на каждую плитку (25 по горизонтали, 20 по вертикали)
+//       texture.repeat.set(COLS, ROWS);
+//       texture.needsUpdate = true;
+//     });
+//   }, [floorTextures]);
+
+//   // 3. Обработчик клика (с защитой от дёргания при частых кликах)
+//   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+//     e.stopPropagation();
+//     const targetX = Math.floor(e.point.x);
+//     const targetZ = Math.floor(e.point.z);
+//     const { player } = gameRef.current;
+
+//     if (GRID[targetZ] && GRID[targetZ][targetX] === 0) {
+//       const startNode =
+//         player.path.length > 0
+//           ? { x: player.path[0].x, y: player.path[0].y }
+//           : {
+//               x: Math.floor(player.realX / TILE_SIZE),
+//               y: Math.floor(player.realY / TILE_SIZE),
+//             };
+
+//       const newPath = findPath(startNode, { x: targetX, y: targetZ });
+//       if (newPath.length > 0) {
+//         player.path = newPath;
+//       }
+//     }
+//   };
+
+//   return (
+//     <mesh
+//       rotation={[-Math.PI / 2, 0, 0]}
+//       position={[COLS / 2, 0, ROWS / 2]}
+//       onPointerDown={handlePointerDown}
+//       receiveShadow
+//     >
+//       <planeGeometry args={[COLS, ROWS]} />
+//       {/* Накладываем PBR-материал пола */}
+//       <meshStandardMaterial
+//         {...floorTextures}
+//         roughness={0.85}
+//         metalness={0.1}
+//       />
+//     </mesh>
+//   );
+// };
+
+interface FloorProps {
+  gameRef: any;
+  grid: number[][]; // Передаем сетку уровня
+}
+
+export const Floor: React.FC<FloorProps> = ({ gameRef, grid }) => {
+  // Динамически определяем размеры карты по текущему уровню
+  const rows = grid.length;
+  const cols = grid[0]?.length || 0;
+
+  // 1. Загрузка текстур пола из public/textures/
   const floorTextures = useTexture({
     map: "/textures/floor_color.png",
     normalMap: "/textures/floor_normal.png",
     roughnessMap: "/textures/floor_rough.png",
   });
 
-  // 2. Настраиваем тайлинг: повторяем текстуру ровно по числу плиток (COLS x ROWS)
+  // 2. Тайлинг текстуры под размеры переданной сетки
   useLayoutEffect(() => {
     Object.values(floorTextures).forEach((texture) => {
       texture.wrapS = THREE.RepeatWrapping;
       texture.wrapT = THREE.RepeatWrapping;
-      // 1 повтор на каждую плитку (25 по горизонтали, 20 по вертикали)
-      texture.repeat.set(COLS, ROWS);
+      // Повторяем текстуру ровно столько раз, сколько плиток в ширину и длину
+      texture.repeat.set(cols, rows);
       texture.needsUpdate = true;
     });
-  }, [floorTextures]);
+  }, [floorTextures, cols, rows]);
 
-  // 3. Обработчик клика (с защитой от дёргания при частых кликах)
+  // 3. Обработка клика мыши с учетом переданного grid
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
+
     const targetX = Math.floor(e.point.x);
     const targetZ = Math.floor(e.point.z);
     const { player } = gameRef.current;
 
-    if (GRID[targetZ] && GRID[targetZ][targetX] === 0) {
+    // Проверяем проходимость клетки (0 - свободный пол)
+    if (grid[targetZ] && grid[targetZ][targetX] === 0) {
+      // Если игрок уже в движении, стартуем со следующей точки маршрута,
+      // чтобы избежать дерганий при частых кликах
       const startNode =
         player.path.length > 0
           ? { x: player.path[0].x, y: player.path[0].y }
@@ -192,8 +395,9 @@ const Floor: React.FC<{ gameRef: any }> = ({ gameRef }) => {
               y: Math.floor(player.realY / TILE_SIZE),
             };
 
-      const newPath = findPath(startNode, { x: targetX, y: targetZ });
-      if (newPath.length > 0) {
+      // Передаем grid в findPath (если твой алгоритм принимает сетку параметром)
+      const newPath = findPath(startNode, { x: targetX, y: targetZ }, grid);
+      if (newPath && newPath.length > 0) {
         player.path = newPath;
       }
     }
@@ -202,12 +406,13 @@ const Floor: React.FC<{ gameRef: any }> = ({ gameRef }) => {
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[COLS / 2, 0, ROWS / 2]}
+      // Центрируем плоскость строго под текущую сетку карты
+      position={[cols / 2, 0, rows / 2]}
       onPointerDown={handlePointerDown}
       receiveShadow
     >
-      <planeGeometry args={[COLS, ROWS]} />
-      {/* Накладываем PBR-материал пола */}
+      {/* Размер плоскости соответствует числу плиток (1 единица Three.js = 1 плитка) */}
+      <planeGeometry args={[cols, rows]} />
       <meshStandardMaterial
         {...floorTextures}
         roughness={0.85}
@@ -249,36 +454,97 @@ const IsometricCamera: React.FC<{ gameRef: any }> = ({ gameRef }) => {
 // -------------------------------------------------------------
 // 6. ОСНОВНОЙ ЭКСПОРТ
 // -------------------------------------------------------------
-export const GameScene: React.FC<GameSceneProps> = ({ gameRef, items }) => {
+// export const GameScene: React.FC<GameSceneProps> = ({ gameRef, items }) => {
+//   return (
+//     <>
+//       {/* <color attach="background" args={["#020617"]} /> */}
+//       {/* <fog attach="fog" args={["#020617", 5, 15]} /> */}
+
+//       <IsometricCamera gameRef={gameRef} />
+
+//       <ambientLight intensity={0.05} />
+
+//       {/* Обернем стены в Suspense на время загрузки текстур камня */}
+//       <Suspense fallback={null}>
+//         <Floor gameRef={gameRef} />
+
+//         {/* {GRID.map((row, z) =>
+//           row.map((tile, x) =>
+//             tile === 1 ? <Wall key={`wall-${x}-${z}`} x={x} z={z} /> : null
+//           )
+//         )} */}
+
+//         {/* Стены из настоящих 3D-моделей скал */}
+//         {/* {GRID.map((row, z) =>
+//           row.map((tile, x) =>
+//             tile === 1 ? <RockWall key={`rock-${x}-${z}`} x={x} z={z} /> : null
+//           )
+//         )} */}
+
+//         {/* Единый рендер любых стен по ID плитки */}
+//         {GRID.map((row, z) =>
+//           row.map((tileId, x) =>
+//             tileId > 0 ? (
+//               <RockWall key={`wall-${x}-${z}`} x={x} z={z} tileId={tileId} />
+//             ) : null
+//           )
+//         )}
+//       </Suspense>
+
+//       {GRID.map((row, z) =>
+//         row.map((tile, x) =>
+//           tile === 3 ? <Lamp key={`wall-${x}-${z}`} x={x} z={z} /> : null
+//         )
+//       )}
+
+//       {/* Отрисовка реактивного списка монет */}
+//       <GoldCoins items={items} />
+
+//       <Player3D gameRef={gameRef} />
+//     </>
+//   );
+// };
+
+interface GameSceneProps {
+  gameRef: any;
+  level: LevelData; // Все данные уровня здесь!
+  items: Item[]; // Текущие оставшиеся монеты
+}
+
+export const GameScene: React.FC<GameSceneProps> = ({
+  gameRef,
+  level,
+  items,
+}) => {
   return (
     <>
-      {/* <color attach="background" args={["#020617"]} /> */}
-      {/* <fog attach="fog" args={["#020617", 5, 15]} /> */}
+      <color attach="background" args={["#020617"]} />
+      <fog attach="fog" args={["#020617", 5, 16]} />
 
       <IsometricCamera gameRef={gameRef} />
+      <ambientLight intensity={0.06} />
 
-      <ambientLight intensity={0.05} />
-
-      {/* Обернем стены в Suspense на время загрузки текстур камня */}
       <Suspense fallback={null}>
-        <Floor gameRef={gameRef} />
+        {/* Пол строится по размеру карты уровня */}
+        <Floor gameRef={gameRef} grid={level.grid} />
 
-        {GRID.map((row, z) =>
-          row.map((tile, x) =>
-            tile === 1 ? <Wall key={`wall-${x}-${z}`} x={x} z={z} /> : null
+        {/* Стены строятся по сетке уровня */}
+        {level.grid.map((row, z) =>
+          row.map((tileId, x) =>
+            tileId > 0 ? (
+              <RockWall key={`wall-${x}-${z}`} x={x} z={z} tileId={tileId} />
+            ) : null
           )
         )}
+
+        {/* Декорации (лопаты, топоры) из уровня */}
+        {/* {level.decorations.map((prop) => (
+          <DecorationProp key={prop.id} prop={prop} />
+        ))} */}
       </Suspense>
 
-      {GRID.map((row, z) =>
-        row.map((tile, x) =>
-          tile === 3 ? <Lamp key={`wall-${x}-${z}`} x={x} z={z} /> : null
-        )
-      )}
-
-      {/* Отрисовка реактивного списка монет */}
+      {/* Золото и Персонаж */}
       <GoldCoins items={items} />
-
       <Player3D gameRef={gameRef} />
     </>
   );
