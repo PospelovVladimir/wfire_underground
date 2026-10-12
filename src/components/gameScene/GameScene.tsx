@@ -1,6 +1,12 @@
 import { useGLTF, useTexture } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import React, { Suspense, useLayoutEffect, useMemo, useRef } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import * as THREE from "three";
 import { TILE_SIZE } from "../../constants";
 import { findPath } from "../../engine/pathfinder";
@@ -8,6 +14,7 @@ import { WALL_TYPES } from "../../tiles";
 import {
   type Item,
   type LevelData,
+  type LightSource,
   type PlayerState,
   type Point,
   type PropItem,
@@ -464,9 +471,73 @@ const PROP_MODELS: Record<string, string> = {
   flashlight: "/models/props/flashlight.glb",
 };
 
+// Внутренний компонент для рендеринга отдельного источника света
+const PropLight: React.FC<{ light: LightSource }> = ({ light }) => {
+  const lightRef = useRef<THREE.SpotLight>(null);
+  const targetRef = useRef<THREE.Object3D>(null);
+
+  // Синхронизируем цель прожектора при монтировании
+  useEffect(() => {
+    if (light.isSpot && lightRef.current && targetRef.current) {
+      lightRef.current.target = targetRef.current;
+    }
+  }, [light.isSpot]);
+
+  const posX = light.offsetX ?? 0;
+  const posY = light.offsetY ?? 0.2;
+  const posZ = light.offsetZ ?? 0;
+
+  const color = light.color ?? "#fef08a";
+  const intensity = light.intensity ?? 15;
+  const distance = light.distance ?? 6;
+
+  if (light.isSpot) {
+    return (
+      <group>
+        <spotLight
+          ref={lightRef}
+          position={[posX, posY, posZ]}
+          color={color}
+          intensity={intensity}
+          distance={distance}
+          angle={light.angle ?? Math.PI / 4}
+          penumbra={light.penumbra ?? 0.5}
+          decay={2}
+          castShadow
+        />
+        {/* 
+            ЭТО САМОЕ ВАЖНОЕ: 
+            Создаем невидимую цель ВНУТРИ этой же группы. 
+            Поскольку группа вращается в DecorationProp, эта точка тоже будет крутиться, 
+            и фонарь будет всегда светить "вперед" относительно модели.
+        */}
+        <object3D
+          ref={targetRef}
+          position={[
+            posX + (light.targetX ?? 0),
+            posY + (light.targetY ?? 0),
+            posZ + (light.targetZ ?? 1), // по умолчанию светит вперед по оси Z
+          ]}
+        />
+      </group>
+    );
+  }
+
+  // Для pointLight ничего менять не нужно, он светит во все стороны
+  return (
+    <pointLight
+      position={[posX, posY, posZ]}
+      color={color}
+      intensity={intensity}
+      distance={distance}
+      decay={2}
+      castShadow
+    />
+  );
+};
+
 export const DecorationProp: React.FC<{ prop: PropItem }> = ({ prop }) => {
-  const modelPath = PROP_MODELS[prop.type] || PROP_MODELS.small_rock;
-  const { scene } = useGLTF(modelPath);
+  const { scene } = useGLTF(PROP_MODELS[prop.type] || PROP_MODELS.small_rock);
 
   const clone = useMemo(() => {
     const c = scene.clone(true);
@@ -479,18 +550,25 @@ export const DecorationProp: React.FC<{ prop: PropItem }> = ({ prop }) => {
     return c;
   }, [scene]);
 
-  const scale = prop.scale ?? 1;
-
-  // ВЫСОТА ПО ОСИ Y: если не указана — рендерится на полу (0)
-  const posY = prop.y ?? 0;
-
   return (
-    <group position={[prop.x + 0.5, posY, prop.z + 0.5]}>
+    <group
+      position={[prop.x + 0.5, prop.y ?? 0, prop.z + 0.5]}
+      rotation={[0, prop.rotationY ?? 0, 0]} // Глобальный поворот (влияет и на модель, и на свет)
+    >
+      {/* 
+         Модель теперь можно довернуть отдельно, 
+         чтобы совместить её лампочку с осью Z 
+      */}
       <primitive
         object={clone}
-        rotation={[prop.rotationX ?? 0, prop.rotationY ?? 0, 0]}
-        scale={[scale, scale, scale]}
+        rotation={[0, prop.modelRotationY ?? 0, 0]}
+        scale={prop.scale ?? 1}
       />
+
+      {prop.lights &&
+        prop.lights.map((light, index) => (
+          <PropLight key={index} light={light} />
+        ))}
     </group>
   );
 };

@@ -15,6 +15,26 @@ export interface PlayerState extends Point {
   gold: number;
 }
 
+export interface LightSource {
+  id?: string;
+  isSpot?: boolean; // true — прожектор (направленный луч), false — точка
+  color?: string;
+  intensity?: number;
+  distance?: number;
+  angle?: number; // Ширина луча для прожектора (в радианах, например Math.PI / 6)
+  penumbra?: number; // Мягкость краев луча (от 0 до 1)
+
+  // Смещение относительно центра модели
+  offsetX?: number;
+  offsetY?: number;
+  offsetZ?: number;
+
+  // Направление луча для прожектора (куда светит)
+  targetX?: number;
+  targetY?: number;
+  targetZ?: number;
+}
+
 export interface PropItem {
   id: string;
   type:
@@ -35,6 +55,10 @@ export interface PropItem {
   rotationX?: number; // Наклон вперед/назад (например, для факела под углом)
   scale?: number; // Масштаб
   isSolid?: boolean; // ТВЕРДОСТЬ: true - нельзя пройти (бревно, бочка), false - можно пройти (трава)
+  modelRotationY?: number; // Поворот модели ВНУТРИ группы (для выравнивания "лица")
+
+  // Массив источников света (можно добавить сколько угодно на один объект)
+  lights?: LightSource[];
 }
 
 export interface LevelData {

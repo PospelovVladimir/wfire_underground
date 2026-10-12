@@ -95,31 +95,111 @@ export const LEVEL_1: LevelData = {
       id: "flashlight_1",
       type: "flashlight",
       x: 4,
-      z: 8.3,
+      z: 5.3,
       y: 0.3,
-      rotationY: 11,
+      rotationY: 0,
       scale: 0.3,
       isSolid: true,
+      modelRotationY: -1.5,
+      // Сразу ДВА источника света у одного фонаря:
+      lights: [
+        // 1. Мягкий рассеянный свет вокруг самого корпуса лампы
+        {
+          isSpot: false,
+          color: "#93c5fd", // Холодный белый свет
+          intensity: 2,
+          distance: 0.5,
+          offsetY: 0.25,
+          offsetX: 0.1,
+          offsetZ: 0.3,
+        },
+        {
+          isSpot: true,
+          color: "#eff6ff",
+          intensity: 35,
+          distance: 10,
+          angle: Math.PI / 5, //резаный узкий луч
+          penumbra: 0.4, // Мягкие края луча
+          offsetY: 0.2,
+          offsetZ: 0.2, // Смещение из стекла лампы
+          targetY: 0,
+          targetZ: 2.0, // Луч бьет вперед по оси Z
+        },
+      ],
     },
     {
       id: "flashlight_2",
       type: "flashlight",
-      x: 5,
-      z: 9.3,
-      y: 0.3,
-      rotationY: 11,
+      x: 6,
+      z: 11.3,
+      y: 1.3,
+      rotationY: 1.3,
       scale: 0.3,
       isSolid: true,
+      // нужно если модель не совпадает с источником света.
+      modelRotationY: -1.5,
+
+      // Сразу ДВА источника света у одного фонаря:
+      lights: [
+        // 1. Мягкий рассеянный свет вокруг самого корпуса лампы
+        {
+          isSpot: false,
+          color: "#93c5fd", // Холодный белый свет
+          intensity: 2,
+          distance: 0.5,
+          offsetY: 0.25,
+          offsetX: 0.1,
+          offsetZ: 0.3,
+        },
+        {
+          isSpot: true,
+          color: "#eff6ff",
+          intensity: 35,
+          distance: 10,
+          angle: Math.PI / 5, //резаный узкий луч
+          penumbra: 0.4, // Мягкие края луча
+          offsetY: 0.2,
+          offsetZ: 0.2, // Смещение из стекла лампы
+          targetY: 0,
+          targetZ: 2.0, // Луч бьет вперед по оси Z
+        },
+      ],
     },
     {
       id: "flashlight_3",
       type: "flashlight",
-      x: 0.5,
-      z: 10.3,
-      y: 1.8,
-      rotationY: 12.5,
+      x: 4.1,
+      z: 2.4,
+      y: 2.3,
+      rotationY: 5.1,
       scale: 0.3,
       isSolid: true,
+      modelRotationY: -1.5,
+      // Сразу ДВА источника света у одного фонаря:
+      lights: [
+        // 1. Мягкий рассеянный свет вокруг самого корпуса лампы
+        {
+          isSpot: false,
+          color: "#93c5fd", // Холодный белый свет
+          intensity: 2,
+          distance: 0.5,
+          offsetY: 0.25,
+          offsetX: 0.1,
+          offsetZ: 0.3,
+        },
+        {
+          isSpot: true,
+          color: "#eff6ff",
+          intensity: 35,
+          distance: 10,
+          angle: Math.PI / 5, //резаный узкий луч
+          penumbra: 0.4, // Мягкие края луча
+          offsetY: 0.2,
+          offsetZ: 0.2, // Смещение из стекла лампы
+          targetY: 0,
+          targetZ: 2.0, // Луч бьет вперед по оси Z
+        },
+      ],
     },
     // { id: "prop_2", type: "axe", x: 3.7, z: 1.1, rotationY: -0.5, scale: 0.7 },
     // {
