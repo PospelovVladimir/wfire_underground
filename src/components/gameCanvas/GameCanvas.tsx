@@ -1,13 +1,13 @@
 import { Canvas } from "@react-three/fiber";
 import React, { useEffect, useRef, useState } from "react";
+import { TILE_SIZE } from "../../constants";
 import { checkPickups, updatePlayerPhysics } from "../../engine/physics";
+import { LEVEL_2 } from "../../levels/level2";
 import { type Item, type PlayerState, type Point } from "../../types";
 import { GameScene } from "../gameScene/GameScene";
-import { TILE_SIZE } from "../../constants";
-import { LEVEL_1 } from "../../levels/level1";
 
 export const GameCanvas: React.FC = () => {
-  const currentLevel = LEVEL_1; // Текущий уровень
+  const currentLevel = LEVEL_2; // Текущий уровень
 
   const [gold, setGold] = useState(0);
 
