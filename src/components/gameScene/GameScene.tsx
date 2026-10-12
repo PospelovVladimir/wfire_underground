@@ -10,6 +10,7 @@ import {
   type LevelData,
   type PlayerState,
   type Point,
+  type PropItem,
 } from "../../types";
 
 interface GameSceneProps {
@@ -451,69 +452,66 @@ const IsometricCamera: React.FC<{ gameRef: any }> = ({ gameRef }) => {
   return null;
 };
 
+// Сопоставление типа предмета с 3D-моделькой в public/models/props/
+const PROP_MODELS: Record<string, string> = {
+  shovel: "/models/props/shovel.glb",
+  axe: "/models/props/axe.glb",
+  small_rock: "/models/props/small_rock.glb",
+  barrel: "/models/props/barrel.glb",
+  torch: "/models/props/torch.glb",
+  log: "/models/props/log.glb",
+  grass: "/models/props/grass.glb",
+  flashlight: "/models/props/flashlight.glb",
+};
+
+export const DecorationProp: React.FC<{ prop: PropItem }> = ({ prop }) => {
+  const modelPath = PROP_MODELS[prop.type] || PROP_MODELS.small_rock;
+  const { scene } = useGLTF(modelPath);
+
+  const clone = useMemo(() => {
+    const c = scene.clone(true);
+    c.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    return c;
+  }, [scene]);
+
+  const scale = prop.scale ?? 1;
+
+  // ВЫСОТА ПО ОСИ Y: если не указана — рендерится на полу (0)
+  const posY = prop.y ?? 0;
+
+  return (
+    <group position={[prop.x + 0.5, posY, prop.z + 0.5]}>
+      <primitive
+        object={clone}
+        rotation={[prop.rotationX ?? 0, prop.rotationY ?? 0, 0]}
+        scale={[scale, scale, scale]}
+      />
+    </group>
+  );
+};
+
+// Предзагрузка моделей декора
+Object.values(PROP_MODELS).forEach((path) => useGLTF.preload(path));
+
 // -------------------------------------------------------------
 // 6. ОСНОВНОЙ ЭКСПОРТ
 // -------------------------------------------------------------
-// export const GameScene: React.FC<GameSceneProps> = ({ gameRef, items }) => {
-//   return (
-//     <>
-//       {/* <color attach="background" args={["#020617"]} /> */}
-//       {/* <fog attach="fog" args={["#020617", 5, 15]} /> */}
-
-//       <IsometricCamera gameRef={gameRef} />
-
-//       <ambientLight intensity={0.05} />
-
-//       {/* Обернем стены в Suspense на время загрузки текстур камня */}
-//       <Suspense fallback={null}>
-//         <Floor gameRef={gameRef} />
-
-//         {/* {GRID.map((row, z) =>
-//           row.map((tile, x) =>
-//             tile === 1 ? <Wall key={`wall-${x}-${z}`} x={x} z={z} /> : null
-//           )
-//         )} */}
-
-//         {/* Стены из настоящих 3D-моделей скал */}
-//         {/* {GRID.map((row, z) =>
-//           row.map((tile, x) =>
-//             tile === 1 ? <RockWall key={`rock-${x}-${z}`} x={x} z={z} /> : null
-//           )
-//         )} */}
-
-//         {/* Единый рендер любых стен по ID плитки */}
-//         {GRID.map((row, z) =>
-//           row.map((tileId, x) =>
-//             tileId > 0 ? (
-//               <RockWall key={`wall-${x}-${z}`} x={x} z={z} tileId={tileId} />
-//             ) : null
-//           )
-//         )}
-//       </Suspense>
-
-//       {GRID.map((row, z) =>
-//         row.map((tile, x) =>
-//           tile === 3 ? <Lamp key={`wall-${x}-${z}`} x={x} z={z} /> : null
-//         )
-//       )}
-
-//       {/* Отрисовка реактивного списка монет */}
-//       <GoldCoins items={items} />
-
-//       <Player3D gameRef={gameRef} />
-//     </>
-//   );
-// };
-
 interface GameSceneProps {
   gameRef: any;
   level: LevelData; // Все данные уровня здесь!
+  walkableGrid;
   items: Item[]; // Текущие оставшиеся монеты
 }
 
 export const GameScene: React.FC<GameSceneProps> = ({
   gameRef,
   level,
+  walkableGrid,
   items,
 }) => {
   return (
@@ -526,7 +524,7 @@ export const GameScene: React.FC<GameSceneProps> = ({
 
       <Suspense fallback={null}>
         {/* Пол строится по размеру карты уровня */}
-        <Floor gameRef={gameRef} grid={level.grid} />
+        <Floor gameRef={gameRef} grid={walkableGrid} />
 
         {/* Стены строятся по сетке уровня */}
         {level.grid.map((row, z) =>
@@ -538,9 +536,9 @@ export const GameScene: React.FC<GameSceneProps> = ({
         )}
 
         {/* Декорации (лопаты, топоры) из уровня */}
-        {/* {level.decorations.map((prop) => (
+        {level.decorations.map((prop) => (
           <DecorationProp key={prop.id} prop={prop} />
-        ))} */}
+        ))}
       </Suspense>
 
       {/* Золото и Персонаж */}

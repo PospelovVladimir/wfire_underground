@@ -17,11 +17,24 @@ export interface PlayerState extends Point {
 
 export interface PropItem {
   id: string;
-  type: "shovel" | "axe" | "small_rock" | "barrel" | "torch";
-  x: number; // Позиция на полу (можно дробную, например 4.3)
-  z: number;
-  rotationY?: number; // Угол поворота в радианах (или градусах)
+  type:
+    | "flashlight"
+    | "barrel"
+    | "log"
+    | "shovel"
+    | "axe"
+    | "small_rock"
+    | "barrel"
+    | "torch"
+    | "log"
+    | "grass";
+  x: number; // Позиция по X на сетке
+  z: number; // Позиция по Z на сетке
+  y?: number; // ВЫСОТА: 0 - на полу, 1.5 - висит на стене/в воздухе
+  rotationY?: number; // Поворот вокруг своей оси
+  rotationX?: number; // Наклон вперед/назад (например, для факела под углом)
   scale?: number; // Масштаб
+  isSolid?: boolean; // ТВЕРДОСТЬ: true - нельзя пройти (бревно, бочка), false - можно пройти (трава)
 }
 
 export interface LevelData {
